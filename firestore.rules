@@ -1,0 +1,17 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Replace with the same address as OWNER_EMAIL, then: firebase deploy --only firestore:rules
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == "you@gmail.com";
+    }
+    // The browser only reads. Every write goes through the API routes (Admin SDK),
+    // which validate input and keep portfolio/current in sync.
+    match /{document=**} {
+      allow read: if isOwner();
+      allow write: if false;
+    }
+  }
+}

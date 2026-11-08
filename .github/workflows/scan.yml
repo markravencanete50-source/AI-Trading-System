@@ -1,0 +1,35 @@
+name: market-scans
+# Vercel Hobby crons run at most once a day, so the 15-minute session scans run from here for free.
+# Repo secrets needed: APP_URL (https://your-app.vercel.app) and CRON_SECRET (same as Vercel env).
+# GitHub may delay scheduled runs by several minutes; the API ignores calls outside market hours.
+on:
+  schedule:
+    - cron: "*/15 1-7 * * 1-5"    # PSE: 9:00-15:45 Manila (UTC+8)
+    - cron: "*/15 12-21 * * 1-5"  # US: covers 8:30-16:15 New York in both EST and EDT
+  workflow_dispatch:
+    inputs:
+      market:
+        description: "PH or US"
+        required: true
+        default: "PH"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Pick market
+        id: m
+        run: |
+          if [ -n "${{ github.event.inputs.market }}" ]; then echo "markets=${{ github.event.inputs.market }}" >> $GITHUB_OUTPUT;
+          else
+            H=$(date -u +%H)
+            if [ "$H" -le 7 ]; then echo "markets=PH" >> $GITHUB_OUTPUT; else echo "markets=US" >> $GITHUB_OUTPUT; fi
+          fi
+      - name: Call scan endpoint
+        run: |
+          for M in ${{ steps.m.outputs.markets }}; do
+            curl -fsS --max-time 120 -X POST "${{ secrets.APP_URL }}/api/cron/scan?market=$M" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+            echo
+          done
