@@ -27,9 +27,16 @@ jobs:
             if [ "$H" -le 7 ]; then echo "markets=PH" >> $GITHUB_OUTPUT; else echo "markets=US" >> $GITHUB_OUTPUT; fi
           fi
       - name: Call scan endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "APP_URL or CRON_SECRET repo secret is not set yet, skipping scan."
+            exit 0
+          fi
           for M in ${{ steps.m.outputs.markets }}; do
-            curl -fsS --max-time 120 -X POST "${{ secrets.APP_URL }}/api/cron/scan?market=$M" \
-              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+            curl -fsS --max-time 120 -X POST "$APP_URL/api/cron/scan?market=$M" \
+              -H "Authorization: Bearer $CRON_SECRET"
             echo
           done

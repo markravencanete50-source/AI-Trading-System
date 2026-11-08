@@ -14,7 +14,7 @@ npm run dev
 
 ## Deployment and CI/CD
 
-- **Vercel project:** `ai-trading-system` (team `markravencanete50-1710s-projects`), linked to this repo.
+- **Vercel project:** `ai-trading-system` (team `markravencanete50-1710s-projects`), production URL https://ai-trading-system-blue.vercel.app. Use that as the `APP_URL` env var and repo secret.
 - **CD:** every push to `main` deploys to production. Other branches and pull requests get preview deployments.
 - **CI:** `.github/workflows/ci.yml` runs typecheck, unit tests and a production build on every push and pull request.
 - **Market scans:** `.github/workflows/scan.yml` calls `/api/cron/scan` every 15 minutes during PSE and US sessions. It needs the `APP_URL` and `CRON_SECRET` repo secrets.
