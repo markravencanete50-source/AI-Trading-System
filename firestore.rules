@@ -5,7 +5,7 @@ service cloud.firestore {
     function isOwner() {
       return request.auth != null
         && request.auth.token.email_verified == true
-        && request.auth.token.email == "you@gmail.com";
+        && request.auth.token.email == "markravencanete50@gmail.com";
     }
     // The browser only reads. Every write goes through the API routes (Admin SDK),
     // which validate input and keep portfolio/current in sync.
