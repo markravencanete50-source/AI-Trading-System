@@ -32,3 +32,12 @@ test("PSE board lots", () => {
   assert.equal(roundQty("PH", 1234, 15.2), 1200);
   assert.equal(roundQty("US", 9.8, 188), 9);
 });
+
+test("a sell logged before its same-day buy still closes the position", () => {
+  const pf = computePortfolio([{ id: "col", market: "PH" }], [
+    tx({ type: "sell", date: "2026-01-02", ticker: "JFC", qty: 100, price: 150, amount: 14950, createdAt: "2026-01-02T01:00:00Z" }),
+    tx({ type: "buy", date: "2026-01-02", ticker: "JFC", qty: 100, price: 140, amount: -14050, createdAt: "2026-01-02T02:00:00Z" }),
+  ]);
+  assert.equal(pf.positions[0].qty, 0);
+  assert.equal(Math.round(pf.positions[0].realized), 900);
+});

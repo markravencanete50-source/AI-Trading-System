@@ -12,6 +12,7 @@ const ROUTINE = [
   "top 100 stockholders", "foreign ownership", "list of stockholders", "issued and/or outstanding shares",
   "certification", "notice of annual", "[amend", "amended",
 ];
+const T = () => AbortSignal.timeout(20_000);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&#0?39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
 const mdY = (d: Date) => `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}-${d.getUTCFullYear()}`;
@@ -23,11 +24,11 @@ export async function ids(ticker: string): Promise<PseIds> {
   const ref = col.pseIds().doc(ticker);
   const cached = await ref.get();
   if (cached.exists) return cached.data() as PseIds;
-  const r = await fetch(`${EDGE}/autoComplete/searchCompanyNameSymbol.ax?term=${encodeURIComponent(ticker)}`, { headers: UA });
+  const r = await fetch(`${EDGE}/autoComplete/searchCompanyNameSymbol.ax?term=${encodeURIComponent(ticker)}`, { headers: UA, signal: T() });
   const list = (await r.json()) as { cmpyId: string; cmpyNm: string; symbol: string }[];
   const m = list.find((x) => x.symbol === ticker);
   if (!m) throw new Error(`${ticker} not found on PSE EDGE`);
-  const page = await (await fetch(`${EDGE}/companyPage/stockData.do?cmpy_id=${m.cmpyId}`, { headers: UA })).text();
+  const page = await (await fetch(`${EDGE}/companyPage/stockData.do?cmpy_id=${m.cmpyId}`, { headers: UA, signal: T() })).text();
   const opts = [...page.matchAll(/<option[^>]*value="(\d+)"[^>]*>\s*([^<]+?)\s*<\/option>/g)];
   const sec = opts.find((o) => o[2] === ticker)?.[1] ?? opts[0]?.[1];
   if (!sec) throw new Error(`No security id for ${ticker}`);
@@ -44,7 +45,7 @@ export async function bars(tickers: string[], days = 270): Promise<Record<string
     try {
       const { cmpyId, securityId } = await ids(t);
       const r = await fetch(`${EDGE}/common/DisclosureCht.ax`, {
-        method: "POST", headers: { ...UA, "content-type": "application/json" },
+        method: "POST", headers: { ...UA, "content-type": "application/json" }, signal: T(),
         body: JSON.stringify({ cmpy_id: cmpyId, security_id: securityId, startDate: mdY(start), endDate: mdY(end) }),
       });
       const j = (await r.json()) as { chartData?: { OPEN: number; HIGH: number; LOW: number; CLOSE: number; VALUE: number; CHART_DATE: string }[] };
@@ -69,7 +70,7 @@ export async function disclosures(tickers: string[], since: Date): Promise<NewsI
     try {
       const { cmpyId } = await ids(t);
       const url = `${EDGE}/companyDisclosures/search.ax?keyword=${cmpyId}&tmplNm=&fromDate=${q(since)}&toDate=${q(new Date())}&sortType=date&dateSortType=DESC`;
-      const html = await (await fetch(url, { headers: UA })).text();
+      const html = await (await fetch(url, { headers: UA, signal: T() })).text();
       for (const row of html.match(/<tr>[\s\S]*?<\/tr>/g) ?? []) {
         const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => decode(c[1].replace(/<[^>]+>/g, "")).trim());
         const edge = row.match(/openPopup\('([^']+)'\)/)?.[1];

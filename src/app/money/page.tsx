@@ -21,6 +21,18 @@ export default function Money() {
   const sum = (type: TxType) => confirmed.filter((t) => t.type === type && t.date.startsWith(year)).reduce((a, t) => a + t.amount * (t.fxToPhp || 1), 0);
   const tin = sum("deposit"), tout = -sum("withdrawal"), div = sum("dividend"), fees = -sum("fee");
   const rows = confirmed.filter((t) => filter === "all" || t.type === filter);
+  const exportCsv = () => {
+    const q = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const names = new Map(brokers.map((b) => [b.id, b.name]));
+    const head = ["date", "broker", "type", "ticker", "qty", "price", "fee", "amount", "currency", "fxToPhp", "source", "note"];
+    const lines = rows.map((t) => [t.date, names.get(t.brokerId), t.type, t.ticker, t.qty, t.price, t.fee, t.amount, t.currency, t.fxToPhp, t.source, t.note].map(q).join(","));
+    const blob = new Blob([[head.join(","), ...lines].join("\r\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ledger-${filter}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   return (
     <Shell title="Money in and out">
@@ -37,7 +49,8 @@ export default function Money() {
           <TxForm brokers={brokers} types={["buy", "sell", "dividend", "fee", "interest"]} />
         </Card>
         <Card title="Ledger" sub="Every movement. Positions and P&L are calculated from this list.">
-          <div className="chips">{FILTERS.map((f) => <button key={f} aria-pressed={filter === f} onClick={() => setFilter(f)}>{NAME[f]}</button>)}</div>
+          <div className="chips">{FILTERS.map((f) => <button key={f} aria-pressed={filter === f} onClick={() => setFilter(f)}>{NAME[f]}</button>)}
+            <button onClick={exportCsv} disabled={rows.length === 0}>Export CSV</button></div>
           {view}
           {rows.length === 0 ? <div className="empty">Nothing here yet.</div> : (
             <div className="tbl-wrap"><table className="t">

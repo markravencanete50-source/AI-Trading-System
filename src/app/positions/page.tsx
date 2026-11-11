@@ -1,20 +1,29 @@
 "use client";
 import { useData } from "@/components/DataProvider";
 import { Shell } from "@/components/Shell";
-import { BrokerTag, Card } from "@/components/ui";
+import { BrokerTag, Card, Kpi } from "@/components/ui";
 import { disp, money, pct, signed } from "@/lib/format";
+import { toPhp } from "@/lib/money";
 
 const PILL = { BUY: "gain", SELL: "loss", TRIM: "warn", WATCH: "warn" } as const;
 
 export default function Positions() {
-  const { val, brokers, suggestions, display, fx } = useData();
+  const { val, brokers, suggestions, display, fx, portfolio } = useData();
   const d = (v: number, dec?: number) => disp(v, display, fx, dec);
   const signalFor = (brokerId: string, ticker: string) =>
     suggestions.find((s) => s.status === "open" && s.ticker === ticker && s.brokerId === brokerId);
   const pnl = val.holdingsPhp - val.costPhp;
+  const cur = new Map(brokers.map((b) => [b.id, b.currency]));
+  const realizedPhp = portfolio.positions.reduce((a, p) => a + toPhp(p.realized, cur.get(p.brokerId) ?? "PHP", fx), 0);
 
   return (
     <Shell title="Positions">
+      <div className="stack">
+      <div className="grid g3">
+        <Kpi k="Unrealised P&L" n={signed(d(pnl, 0), pnl)} s="Open positions against their cost" />
+        <Kpi k="Realised P&L" n={signed(d(realizedPhp, 0), realizedPhp)} s="Booked from sells, fees included" />
+        <Kpi k="Holdings value" n={d(val.holdingsPhp, 0)} s={`${val.rows.length} position${val.rows.length === 1 ? "" : "s"}`} />
+      </div>
       <Card title="Everything you hold" sub="Calculated from your ledger. Prices refresh during market scans and once a day.">
         {val.rows.length === 0 ? <div className="empty">No holdings yet. Log a buy on the Money page or import a statement on Brokers.</div> : (
           <div className="tbl-wrap">
@@ -42,6 +51,7 @@ export default function Positions() {
           </div>
         )}
       </Card>
+      </div>
     </Shell>
   );
 }

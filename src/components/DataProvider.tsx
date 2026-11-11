@@ -37,7 +37,7 @@ function useCollection<T>(user: User | null, build: () => ReturnType<typeof quer
   useEffect(() => {
     if (!user) return;
     return onSnapshot(build(), (s) => { setRows(s.docs.map((d) => ({ id: d.id, ...(d.data() as object) }) as T)); mark(); },
-      (e) => console.error("Firestore subscription failed", e));
+      (e) => { console.error("Firestore subscription failed", e); mark(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
   return rows;
@@ -45,22 +45,23 @@ function useCollection<T>(user: User | null, build: () => ReturnType<typeof quer
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(undefined);
-  const [loaded, setLoaded] = useState(0);
+  // Count each source once (first answer), not every live update, so "ready" really means all six have arrived.
+  const [loadedKeys, setLoadedKeys] = useState<Record<string, true>>({});
   const [display, setDisplay] = useState<DisplayCurrency>("PHP");
   const [savedSettings, setSavedSettings] = useState<Partial<Settings>>();
-  const mark = () => setLoaded((n) => n + 1);
+  const markAs = (key: string) => () => setLoadedKeys((k) => (k[key] ? k : { ...k, [key]: true }));
 
   useEffect(() => onAuthStateChanged(fbAuth(), setUser), []);
   useEffect(() => {
     if (!user) return;
-    return onSnapshot(doc(fbDb(), "meta", "settings"), (d) => { setSavedSettings(d.data() as Partial<Settings> | undefined); mark(); });
+    return onSnapshot(doc(fbDb(), "meta", "settings"), (d) => { setSavedSettings(d.data() as Partial<Settings> | undefined); markAs("settings")(); }, () => markAs("settings")());
   }, [user]);
 
-  const brokers = useCollection<Broker>(user ?? null, () => collection(fbDb(), "brokers"), mark);
-  const txs = useCollection<Tx>(user ?? null, () => query(collection(fbDb(), "transactions"), orderBy("date", "desc")), mark);
-  const suggestions = useCollection<Suggestion>(user ?? null, () => query(collection(fbDb(), "suggestions"), orderBy("createdAt", "desc"), limit(300)), mark);
-  const priceRows = useCollection<PriceDoc & { id: string }>(user ?? null, () => collection(fbDb(), "prices"), mark);
-  const snapshots = useCollection<Snapshot>(user ?? null, () => query(collection(fbDb(), "snapshots"), orderBy("date", "desc"), limit(400)), mark);
+  const brokers = useCollection<Broker>(user ?? null, () => collection(fbDb(), "brokers"), markAs("brokers"));
+  const txs = useCollection<Tx>(user ?? null, () => query(collection(fbDb(), "transactions"), orderBy("date", "desc")), markAs("transactions"));
+  const suggestions = useCollection<Suggestion>(user ?? null, () => query(collection(fbDb(), "suggestions"), orderBy("createdAt", "desc"), limit(300)), markAs("suggestions"));
+  const priceRows = useCollection<PriceDoc & { id: string }>(user ?? null, () => collection(fbDb(), "prices"), markAs("prices"));
+  const snapshots = useCollection<Snapshot>(user ?? null, () => query(collection(fbDb(), "snapshots"), orderBy("date", "desc"), limit(400)), markAs("snapshots"));
 
   const value = useMemo(() => {
     if (!user) return null;
@@ -70,11 +71,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const fx = settings.fxUsdPhp;
     const names = new Map(brokers.map((b) => [b.id, b.name]));
     return {
-      user, ready: loaded >= 6, brokers: [...brokers].sort((a, b) => a.createdAt.localeCompare(b.createdAt)), txs, suggestions, prices,
+      user, ready: Object.keys(loadedKeys).length >= 6, brokers: [...brokers].sort((a, b) => a.createdAt.localeCompare(b.createdAt)), txs, suggestions, prices,
       snapshots: [...snapshots].reverse(), settings, portfolio, val: valuation(portfolio, brokers, prices, fx), fx,
       display, setDisplay, brokerName: (id: string | null | undefined) => (id && names.get(id)) || "No broker",
     } satisfies Data;
-  }, [user, loaded, savedSettings, brokers, txs, suggestions, priceRows, snapshots, display]);
+  }, [user, loadedKeys, savedSettings, brokers, txs, suggestions, priceRows, snapshots, display]);
 
   if (user === undefined) return <div className="center muted">Loading</div>;
   if (!user) return <SignIn />;
@@ -90,6 +91,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       </div>
     );
   }
+  // Hold the screens until every collection has answered, so forms never start with an empty broker list.
+  if (!value?.ready) return <div className="center muted">Loading your data</div>;
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

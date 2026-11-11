@@ -19,8 +19,11 @@ export const POST = handler(async (req: Request) => {
     const t = file.type || "";
     if (t === "application/pdf") input = { kind: "pdf", base64: buf.toString("base64") };
     else if (t === "image/png" || t === "image/jpeg" || t === "image/webp") input = { kind: "image", base64: buf.toString("base64"), mediaType: t };
-    else input = { kind: "text", text: buf.toString("utf8") };
+    else if (t.startsWith("text/") || t === "application/vnd.ms-excel" || t === "application/csv" || /\.(csv|txt)$/i.test(file.name)) {
+      input = { kind: "text", text: buf.toString("utf8") };
+    } else throw new HttpError(415, "Attach a PDF, CSV, TXT, PNG, JPG or WEBP file");
   } else if (text.trim()) {
+    if (text.length > 100_000) throw new HttpError(413, "Text is too long. Paste a smaller part.");
     input = { kind: "text", text };
   }
   if (!input) throw new HttpError(400, "Paste some text or attach a file");

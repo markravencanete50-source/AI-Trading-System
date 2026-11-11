@@ -31,7 +31,7 @@ export async function syncAlpaca(brokers: Broker[]) {
       const snaps = await col.txs().firestore.getAll(...refs.slice(i, i + 100));
       snaps.forEach((s) => s.exists && existing.add(s.id));
     }
-    const batch = col.txs().firestore.batch();
+    const writes: [FirebaseFirestore.DocumentReference, Record<string, unknown>][] = [];
     acts.forEach((a, k) => {
       if (existing.has(refs[k].id)) return;
       const date = (a.transaction_time ?? a.date ?? new Date().toISOString()).slice(0, 10);
@@ -39,7 +39,7 @@ export async function syncAlpaca(brokers: Broker[]) {
       let amount = Number(a.net_amount ?? 0);
       const qty = Number(a.qty ?? 0), price = Number(a.price ?? 0);
       switch (a.activity_type) {
-        case "FILL": type = a.side === "buy" ? "buy" : "sell"; amount = (type === "buy" ? -1 : 1) * qty * price; break;
+        case "FILL": type = a.side === "buy" ? "buy" : "sell"; if (a.side === "sell_short") return; amount = (type === "buy" ? -1 : 1) * qty * price; break;
         case "CSD": type = "deposit"; break;
         case "CSW": type = "withdrawal"; break;
         case "DIV": case "DIVNRA": type = a.activity_type === "DIVNRA" ? "fee" : "dividend"; break;
@@ -47,17 +47,21 @@ export async function syncAlpaca(brokers: Broker[]) {
         case "INT": type = "interest"; break;
       }
       if (!type || !Number.isFinite(amount) || amount === 0) return;
-      batch.set(refs[k], {
+      writes.push([refs[k], {
         brokerId: b.id, type, date, ticker: a.symbol || undefined,
         qty: type === "buy" || type === "sell" ? qty : undefined, price: type === "buy" || type === "sell" ? price : undefined,
         amount: f2(amount), currency: b.currency, fxToPhp: b.currency === "USD" ? settings.fxUsdPhp : 1,
         note: a.description ?? `Alpaca ${a.activity_type}`, source: "alpaca", externalId: a.id, status: "confirmed",
         createdAt: new Date().toISOString(),
-      });
+      }]);
       added++;
     });
-    batch.update(col.brokers().doc(b.id), { lastSyncAt: new Date().toISOString() });
-    await batch.commit();
+    for (let i = 0; i < writes.length; i += 400) {
+      const batch = col.txs().firestore.batch();
+      writes.slice(i, i + 400).forEach(([ref, data]) => batch.set(ref, data));
+      await batch.commit();
+    }
+    await col.brokers().doc(b.id).update({ lastSyncAt: new Date().toISOString() });
   }
   return added;
 }
@@ -154,9 +158,10 @@ export async function runDaily() {
   const brokers = await listBrokers();
   const synced = await syncAlpaca(brokers).catch((e) => { console.error("Alpaca sync failed", e); return -1; });
   const pf = await recomputePortfolio();
-  await refreshHeldPrices(pf.positions);
-  const snapshot = await writeSnapshot();
-  const expired = await expireSuggestions();
-  const graded = await gradeSuggestions();
+  const step = async <T>(name: string, fn: () => Promise<T>, fallback: T) => fn().catch((e) => { console.error(`Daily step failed: ${name}`, e); return fallback; });
+  await step("prices", () => refreshHeldPrices(pf.positions), undefined);
+  const snapshot = await step("snapshot", writeSnapshot, null);
+  const expired = await step("expire", expireSuggestions, -1);
+  const graded = await step("grade", gradeSuggestions, -1);
   return { fx, synced, snapshot, expired, graded };
 }

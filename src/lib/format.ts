@@ -24,4 +24,8 @@ export function short(vPhp: number, display: DisplayCurrency, fx: number, withSy
 
 export const signed = (s: string, v: number) => (v > 0 ? "+" + s : s);
 export const pct = (v: number, d = 1) => `${v > 0 ? "+" : ""}${v.toFixed(d)}%`;
-export const today = () => new Date().toISOString().slice(0, 10);
+/** Today in the user's own calendar (toISOString would give yesterday in Manila before 8am). */
+export const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};

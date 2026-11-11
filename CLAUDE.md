@@ -102,6 +102,7 @@ src/
 | `PUT /api/settings` | owner | Validated partial update of `meta/settings`. |
 | `POST /api/suggestions/[id]` | owner | `{do: "execute" \| "done" \| "dismiss", fill?}`. Claims the doc in a transaction first. |
 | `POST /api/import/extract` | owner | Form data: brokerId plus text or file. Returns drafts, saves nothing. |
+| `GET /api/health` | owner | Which integrations are configured (booleans only) plus last price and snapshot times. Shown on Settings. |
 | `POST /api/import/webhook` | webhook secret | Make.com sends broker confirmation emails here; rows saved as `needs_review`. |
 
 ### Firestore collections
@@ -174,6 +175,15 @@ The LLM only scores news. It never decides trades. Keep it that way: determinist
 - The scorecard is meaningless below about 50 graded suggestions. The UI says so.
 - Sizing uses whole net worth. With a small US account, high-priced stocks round down to zero shares and no BUY is made.
 - None of this is financial advice. The app gives rule-based signals with their reasons, and Mark decides.
+
+## Hardening notes (2026-11-12 audit)
+
+- `normalizeTx` coerces and validates every number, real calendar dates, tickers and status. Never write a transaction without it.
+- Bulk imports (array body to `/api/transactions`) skip rows identical to existing ones; rows with an `externalId` never overwrite an existing doc, so a replayed email cannot undo a confirmation.
+- Secrets are compared in constant time. 500 errors return a generic message; details go to the server log. Alpaca order rejections are `HttpError(502)` so the reason still reaches the UI.
+- Scans take a per-market Firestore lock (`meta/lock_scan_<market>`, 5 min) so overlapping runs cannot create duplicate suggestions.
+- RSS feeds must be public https URLs (`lib/server/urls.ts`). External fetches have timeouts.
+- `next.config.ts` sets CSP and security headers. If sign-in ever breaks after adding a new Google/Firebase origin, check the CSP first.
 
 ## Backlog, in priority order
 

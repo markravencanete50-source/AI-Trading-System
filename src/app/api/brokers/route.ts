@@ -1,5 +1,5 @@
-import { col, recomputePortfolio } from "@/lib/server/db";
-import { handler, HttpError, requireOwner } from "@/lib/server/http";
+import { col, listBrokers, recomputePortfolio } from "@/lib/server/db";
+import { handler, HttpError, readJson, requireOwner } from "@/lib/server/http";
 import type { Broker, Connection, Currency, Market } from "@/lib/types";
 
 const MARKETS: Market[] = ["PH", "US"];
@@ -7,31 +7,38 @@ const CURRENCIES: Currency[] = ["PHP", "USD"];
 const CONNECTIONS: Connection[] = ["alpaca", "email", "manual"];
 
 function validate(b: Partial<Broker>) {
-  if (!b.name?.trim()) throw new HttpError(400, "Name is required");
+  const name = typeof b.name === "string" ? b.name.trim() : "";
+  if (!name) throw new HttpError(400, "Name is required");
+  if (name.length > 60) throw new HttpError(400, "Name is too long (60 characters max)");
   if (!MARKETS.includes(b.market as Market)) throw new HttpError(400, "Market must be PH or US");
   if (!CURRENCIES.includes(b.currency as Currency)) throw new HttpError(400, "Currency must be PHP or USD");
   if (!CONNECTIONS.includes(b.connection as Connection)) throw new HttpError(400, "Unknown connection type");
   if (b.connection === "alpaca" && b.market !== "US") throw new HttpError(400, "Alpaca is for US stocks");
+  return name;
 }
 
 export const POST = handler(async (req: Request) => {
   await requireOwner(req);
-  const b = (await req.json()) as Partial<Broker>;
-  validate(b);
+  const b = await readJson<Partial<Broker>>(req);
+  const name = validate(b);
+  if ((await listBrokers()).some((x) => x.name.toLowerCase() === name.toLowerCase() && x.market === b.market)) {
+    throw new HttpError(409, `You already have a ${b.market} broker called ${name}`);
+  }
   const ref = col.brokers().doc();
-  await ref.set({ name: b.name!.trim(), market: b.market, currency: b.currency, connection: b.connection, createdAt: new Date().toISOString() });
+  await ref.set({ name, market: b.market, currency: b.currency, connection: b.connection, createdAt: new Date().toISOString() });
   return { id: ref.id };
 });
 
 export const PATCH = handler(async (req: Request) => {
   await requireOwner(req);
-  const b = (await req.json()) as Partial<Broker> & { id: string };
+  const b = await readJson<Partial<Broker> & { id: string }>(req);
+  if (!b?.id || typeof b.id !== "string") throw new HttpError(400, "id required");
   const ref = col.brokers().doc(b.id);
   const cur = await ref.get();
   if (!cur.exists) throw new HttpError(404, "Broker not found");
   const next = { ...(cur.data() as Broker), ...b };
-  validate(next);
-  await ref.update({ name: next.name.trim(), connection: next.connection });
+  const name = validate(next);
+  await ref.update({ name, connection: next.connection });
   return { id: b.id };
 });
 

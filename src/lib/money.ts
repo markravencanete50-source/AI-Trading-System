@@ -6,13 +6,16 @@ export const priceKey = (market: Market | string, ticker: string) => `${market}_
 export const toPhp = (amount: number, currency: Currency, fxUsdPhp: number) =>
   currency === "USD" ? amount * fxUsdPhp : amount;
 
+const DAY_ORDER: Record<Tx["type"], number> = { deposit: 0, interest: 0, dividend: 0, buy: 1, sell: 2, fee: 3, withdrawal: 3 };
+
 export function computePortfolio(brokers: Pick<Broker, "id" | "market">[], txs: Tx[]): Portfolio {
   const known = new Map(brokers.map((b) => [b.id, b]));
   const cash: Record<string, number> = {};
   const pos = new Map<string, Position>();
   const sorted = txs
     .filter((t) => t.status === "confirmed" && known.has(t.brokerId))
-    .sort((a, b) => a.date.localeCompare(b.date) || a.createdAt.localeCompare(b.createdAt));
+    // Same-day order: money in and buys before sells, so a sell logged before its buy cannot be clamped to zero.
+    .sort((a, b) => a.date.localeCompare(b.date) || DAY_ORDER[a.type] - DAY_ORDER[b.type] || a.createdAt.localeCompare(b.createdAt));
 
   for (const t of sorted) {
     const b = known.get(t.brokerId)!;

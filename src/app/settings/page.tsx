@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useData } from "@/components/DataProvider";
 import { Shell } from "@/components/Shell";
 import { Card, useAction } from "@/components/ui";
+import { Status } from "@/components/Status";
 import { api } from "@/lib/client/firebase";
 
 export default function SettingsPage() {
@@ -70,6 +71,7 @@ export default function SettingsPage() {
             <div><label>Email alerts to</label><input type="email" value={alertEmail} onChange={(e) => setAlertEmail(e.target.value)} placeholder="Leave empty for no emails" /></div>
           </div>
         </Card>
+        <Status />
         <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "Saving" : "Save settings"}</button>{view}</div>
       </div>
     </Shell>

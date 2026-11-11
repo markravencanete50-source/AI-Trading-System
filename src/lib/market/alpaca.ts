@@ -1,5 +1,6 @@
 import "server-only";
 import { cfg } from "../server/config";
+import { HttpError } from "../server/http";
 import type { Bar, NewsItem } from "./types";
 
 const headers = () => ({
@@ -12,8 +13,8 @@ export const alpacaConfigured = () => !!(cfg.alpaca.keyId && cfg.alpaca.secret);
 const iso = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
 
 async function get<T>(url: string): Promise<T> {
-  const r = await fetch(url, { headers: headers(), cache: "no-store" });
-  if (!r.ok) throw new Error(`Alpaca ${r.status}: ${await r.text()}`);
+  const r = await fetch(url, { headers: headers(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`Alpaca ${r.status}: ${(await r.text()).slice(0, 300)}`);
   return r.json() as Promise<T>;
 }
 
@@ -58,13 +59,13 @@ export async function news(symbols: string[], since: Date): Promise<NewsItem[]> 
 }
 
 export async function latestPrice(symbol: string) {
-  const j = await get<{ trade: { p: number } }>(`${cfg.alpaca.dataUrl}/v2/stocks/${symbol}/trades/latest?feed=${cfg.alpaca.feed}`);
+  const j = await get<{ trade: { p: number } }>(`${cfg.alpaca.dataUrl}/v2/stocks/${encodeURIComponent(symbol)}/trades/latest?feed=${cfg.alpaca.feed}`);
   return j.trade.p;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${cfg.alpaca.tradingUrl}${path}`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
-  if (!r.ok) throw new Error(`Alpaca rejected the order (${r.status}): ${await r.text()}`);
+  const r = await fetch(`${cfg.alpaca.tradingUrl}${path}`, { method: "POST", headers: headers(), body: JSON.stringify(body), signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new HttpError(502, `Alpaca rejected the order (${r.status}): ${(await r.text()).slice(0, 300)}`);
   return r.json() as Promise<T>;
 }
 

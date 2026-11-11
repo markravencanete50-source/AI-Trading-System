@@ -17,17 +17,24 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    concurrency:
+      group: market-scan
+      cancel-in-progress: false
     steps:
       - name: Pick market
         id: m
+        env:
+          INPUT_MARKET: ${{ github.event.inputs.market }}
         run: |
-          if [ -n "${{ github.event.inputs.market }}" ]; then echo "markets=${{ github.event.inputs.market }}" >> $GITHUB_OUTPUT;
+          if [ -n "$INPUT_MARKET" ]; then
+            case "$INPUT_MARKET" in PH|US) echo "markets=$INPUT_MARKET" >> $GITHUB_OUTPUT ;; *) echo "market must be PH or US"; exit 1 ;; esac
           else
             H=$(date -u +%H)
             if [ "$H" -le 7 ]; then echo "markets=PH" >> $GITHUB_OUTPUT; else echo "markets=US" >> $GITHUB_OUTPUT; fi
           fi
       - name: Call scan endpoint
         env:
+          MARKETS: ${{ steps.m.outputs.markets }}
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
@@ -35,7 +42,7 @@ jobs:
             echo "APP_URL or CRON_SECRET repo secret is not set yet, skipping scan."
             exit 0
           fi
-          for M in ${{ steps.m.outputs.markets }}; do
+          for M in $MARKETS; do
             curl -fsS --max-time 120 -X POST "$APP_URL/api/cron/scan?market=$M" \
               -H "Authorization: Bearer $CRON_SECRET"
             echo

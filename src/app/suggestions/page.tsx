@@ -40,7 +40,11 @@ function Item({ s, broker }: { s: Suggestion; broker?: Broker }) {
   const [fill, setFill] = useState({ qty: s.plan?.qty ?? 0, price: s.plan?.entry ?? s.priceAt, fee: 0, date: today() });
   const api_ = broker?.connection === "alpaca";
   const cur = broker?.currency ?? (s.market === "US" ? "USD" : "PHP");
-  const act = (body: object) => run(async () => { await api(`/api/suggestions/${s.id}`, { json: body }); });
+  const expired = Date.parse(s.expiresAt) < Date.now();
+  const act = (body: { do: string; fill?: object }) => run(async () => {
+    if (body.do === "execute" && !confirm(`Send a real order: ${s.action} ${s.plan?.qty ?? ""} ${s.ticker} on ${broker?.name}?`)) return;
+    await api(`/api/suggestions/${s.id}`, { json: body });
+  });
 
   return (
     <div className="sugg">
@@ -50,6 +54,7 @@ function Item({ s, broker }: { s: Suggestion; broker?: Broker }) {
         <BrokerTag broker={broker} />
         <ul>{s.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
         {s.news.length > 0 && <ul>{s.news.map((n, i) => <li key={i}><a href={n.url} target="_blank" rel="noreferrer">{n.headline}</a> ({n.impact > 0 ? "+" : ""}{n.impact})</li>)}</ul>}
+        {expired && <div className="cashnote">This idea has expired. The price may have moved, so wait for the next scan unless you already acted on it.</div>}
         {s.plan?.cashNeeded ? <div className="cashnote">Transfer {money(s.plan.cashNeeded, cur)} from your bank to {broker?.name ?? "the broker"} first, then log the deposit.</div> : null}
         {logging && (
           <div className="form" style={{ marginTop: 12 }}>
@@ -67,7 +72,7 @@ function Item({ s, broker }: { s: Suggestion; broker?: Broker }) {
           <button className="btn" disabled={busy} onClick={() => act({ do: "dismiss" })}>Got it</button>
         ) : api_ ? (
           <>
-            <button className="btn primary" disabled={busy} onClick={() => act({ do: "execute" })}>
+            <button className="btn primary" disabled={busy || expired} onClick={() => act({ do: "execute" })}>
               {busy ? "Checking live price" : `Approve: ${s.action === "BUY" ? "buy" : "sell"} ${s.plan?.qty ?? ""} on ${broker?.name}`}
             </button>
             <button className="btn" disabled={busy} onClick={() => act({ do: "dismiss" })}>Dismiss</button>

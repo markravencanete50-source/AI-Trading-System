@@ -129,9 +129,10 @@ function ImportPanel({ brokers }: { brokers: Broker[] }) {
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn primary" disabled={busy} onClick={() => run(async () => {
               const keep = drafts.filter((d) => d.keep);
-              await api("/api/transactions", { json: keep.map(({ keep: _k, confidence: _c, ...d }) => ({ ...d, brokerId })) });
+              const r = await api<{ ids: string[]; skipped: number }>("/api/transactions", { json: keep.map(({ keep: _k, confidence: _c, ...d }) => ({ ...d, brokerId })) });
               setDrafts([]); setText(""); setFile(null);
-              return `Saved ${keep.length} transaction${keep.length === 1 ? "" : "s"}.`;
+              const n = r.ids.length;
+              return `Saved ${n} transaction${n === 1 ? "" : "s"}.${r.skipped ? ` Left out ${r.skipped} already in your ledger.` : ""}`;
             })}>Save {drafts.filter((d) => d.keep).length} to ledger</button>
             <button className="btn" onClick={() => setDrafts([])}>Discard</button>
           </div>

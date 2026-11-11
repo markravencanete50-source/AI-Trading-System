@@ -1,4 +1,5 @@
 import "server-only";
+import { safeFeedUrl } from "../server/urls";
 import type { NewsItem } from "./types";
 
 const clean = (s = "") =>
@@ -15,8 +16,11 @@ const tag = (xml: string, t: string) => xml.match(new RegExp(`<${t}[^>]*>([\\s\\
 export async function phNews(aliases: Record<string, string[]>, feeds: string[], since: Date): Promise<NewsItem[]> {
   const items: NewsItem[] = [];
   for (const url of feeds) {
+    if (!safeFeedUrl(url)) { console.warn(`Skipped unsafe feed ${url}`); continue; }
     try {
-      const xml = await (await fetch(url, { headers: HEADERS, redirect: "follow" })).text();
+      const res = await fetch(url, { headers: HEADERS, redirect: "follow", signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const xml = (await res.text()).slice(0, 3_000_000);
       for (const it of xml.match(/<item[\s>][\s\S]*?<\/item>/g) ?? []) {
         const pub = Date.parse(clean(tag(it, "pubDate")));
         if (!pub || pub < since.getTime()) continue;
